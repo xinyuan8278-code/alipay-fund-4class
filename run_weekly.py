@@ -88,11 +88,41 @@ def publish(latest):
           % (SITE, os.path.getsize(latest) / 1048576.0))
 
 
+def preflight():
+    """先花一次请求确认东财可达。
+    不可达时直接退出：否则 600+ 只基金各自重试（4 次 × 2 个协议 × 25s）会白烧十几分钟。"""
+    import urllib.request, ssl
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    for url in ('https://fund.eastmoney.com/pingzhongdata/510300.js',
+                'http://fundmobapi.eastmoney.com/FundMNewApi/FundMNBasicInformation'
+                '?FCODE=018266&deviceid=Wap&plat=Wap&product=EFund&version=2.0.0'):
+        try:
+            r = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(r, timeout=20, context=ctx) as resp:
+                n = len(resp.read(2000))
+            if n > 0:
+                print('   预检通过：%s（读取 %d 字节）' % (url.split('/')[2], n))
+                return True
+            print('   预检返回空体：%s' % url)
+        except Exception as e:
+            print('   预检失败：%s → %s' % (url.split('/')[2], e))
+    return False
+
+
 def main():
     fast = '--fast' in sys.argv
+    skip_pre = '--skip-preflight' in sys.argv
     t0 = time.time()
     print('=== 支付宝可申购基金 · 四大类筛选与组合回测 · 周更流水线 ===')
     print('数据口径：%s' % (os.environ.get('QDII_UNTIL') or '最新净值日'))
+    if not skip_pre:
+        print('[pre] 连通性预检')
+        if not preflight():
+            print('!! 东方财富接口不可达（多为境外出口被限流）。本周不生成新页面，'
+                  '沿用仓库里上一版 deploy_site/。')
+            return 2
     if not fast:
         print('[00] 刷新净值缓存')
         refresh_cache()
@@ -112,4 +142,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())
