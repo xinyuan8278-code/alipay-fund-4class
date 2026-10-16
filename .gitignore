@@ -1,0 +1,33 @@
+# 中间产物不入库（体积大且每周重生成）
+work/qdii2026/cache/
+work/qdii2026/*.json
+work/qdii2026/logs/
+work/*.png
+work/slice_*.png
+work/dom*.html
+work/edgeprof*/
+work/p_*/
+work/pfin/
+work/ptail/
+work/pdom*/
+work/tail*.png
+work/fin_*.png
+work/shot_ref.png
+work/last_script.js
+work/ref_*.html
+work/ref_page_js.js
+work/ref_body_pretty.html
+work/structure_map.txt
+work/ref_css.txt
+
+# 交付页保留（就是给 GitHub Pages 用的），只忽略历史版本
+outputs/final/*_asof*.html
+
+__pycache__/
+*.pyc
+
+# 本地临时
+venv/
+.venv/
+.DS_Store
+Thumbs.db

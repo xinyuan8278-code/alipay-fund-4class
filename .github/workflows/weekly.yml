@@ -1,0 +1,87 @@
+name: 四大类基金组合周更
+
+# 每周六 01:00 UTC = 北京时间 09:00（与 md 里的口径一致）
+on:
+  schedule:
+    - cron: '0 1 * * 6'
+  workflow_dispatch:          # 支持手动触发，便于首次验证
+
+# 需要写权限：把新页面提交回仓库，Netlify 收到 push 后自动发布
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 只依赖标准库，无需 pip install；缓存净值序列，减少对东财的请求
+      - uses: actions/cache@v4
+        with:
+          path: work/qdii2026/cache
+          key: qdii-nav-cache-${{ github.run_id }}
+          restore-keys: |
+            qdii-nav-cache-
+
+      # 抓取失败也不让整条流水线挂掉：此时沿用仓库里已提交的 deploy_site（上一版），
+      # 线上站点保持可用，只在 Actions 里报一个 warning。
+      - name: 跑周更流水线
+        id: pipeline
+        continue-on-error: true
+        run: |
+          python -c "import sys;print(sys.version)"
+          python run_weekly.py
+        env:
+          PYTHONIOENCODING: utf-8
+
+      - name: 兜底（流水线失败时沿用上一版）
+        if: steps.pipeline.outcome != 'success'
+        run: |
+          echo "::warning::周更流水线未成功（多为境外出口访问东财受限），本次沿用仓库内 deploy_site 的上一版页面。"
+
+      - name: 自检（图表 / 关键区块 / 无残留 token）
+        continue-on-error: true
+        run: python scripts/verify_page.py deploy_site/index.html
+
+      # 把新页面回写仓库：① 留档 ② 触发 Netlify 自动发布 ③ 下次兜底用的就是它
+      - name: 提交发布包
+        if: steps.pipeline.outcome == 'success'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A deploy_site outputs/final work/qdii2026/swap_state.json
+          git diff --cached --quiet || git commit -m "chore: 周更发布包 $(date -u +%Y-%m-%d)"
+          git push || echo "::warning::回写失败（权限或并发），不影响已生成页面"
+
+      # 可选：仓库 Secrets 里配了 NETLIFY_BUILD_HOOK 就顺手敲一下 Netlify 的 Build Hook。
+      # 这样即便 Netlify 的「push 自动发布」被关掉，也能确保线上刷新。
+      - name: 触发 Netlify 重新发布（可选）
+        if: steps.pipeline.outcome == 'success'
+        env:
+          HOOK: ${{ secrets.NETLIFY_BUILD_HOOK }}
+        run: |
+          if [ -n "$HOOK" ]; then
+            code=$(curl -s -o /dev/null -w "%{http_code}" -X POST -d '{}' "$HOOK")
+            echo "Netlify build hook -> HTTP $code"
+          else
+            echo "未配置 NETLIFY_BUILD_HOOK，跳过（Netlify 会由 push 事件自动发布）"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: page-and-data
+          path: |
+            outputs/final/*.html
+            work/qdii2026/*.json
+          retention-days: 30

@@ -1,0 +1,45 @@
+# Netlify 配置：本站是「静态单页」，直接发布 deploy_site/ 目录
+#
+# 两种工作方式，默认用第 1 种（推荐）：
+#
+#  方式 A（默认）：GitHub Actions 每周六跑流水线 → 把新页面提交回仓库 → Netlify 收到 push 自动发布
+#                Netlify 这边不需要装 Python、也不跑任何构建，最稳。
+#
+#  方式 B（可切换）：让 Netlify 自己跑流水线。把下面的 command 改成 `python3 run_weekly.py`
+#                并在 Netlify 后台加一个 Build Hook，由外部定时触发。
+#                注意 Netlify 构建机在境外，抓东财接口可能受限（失败会沿用仓库里上一版）。
+
+[build]
+  publish = "deploy_site"
+  # 方式 A：不跑构建，只发布已有静态文件
+  command = "echo netlify-static-publish-only"
+  # 方式 B：改成下面这行（去掉前面的 #）
+  # command = "python3 run_weekly.py"
+
+[build.environment]
+  # 只在方式 B 下有意义；Netlify 构建机需要 Python 3.12
+  PYTHON_VERSION = "3.12"
+  PYTHONIOENCODING = "utf-8"
+
+# 发布包里的历史版本目录照样能访问： /archive/xxx.html
+[[redirects]]
+  from = "/latest"
+  to = "/latest.html"
+  status = 200
+
+# HTML 不做长缓存，保证每周更新立刻生效；静态资源可以长缓存
+[[headers]]
+  for = "*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=604800"
+
+# 内部文件不外露
+[[headers]]
+  for = "/archive/*"
+  [headers.values]
+    X-Robots-Tag = "noindex"
